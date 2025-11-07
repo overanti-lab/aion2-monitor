@@ -83,3 +83,15 @@ if __name__ == "__main__":
     while True:
         main()
         time.sleep(600)  # 每10分鐘檢查一次
+
+# === 啟動 Flask ===
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "✅ AION2 monitor 正在運行中！"
+
+if __name__ == "__main__":
+    threading.Thread(target=background_job, daemon=True).start()
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
