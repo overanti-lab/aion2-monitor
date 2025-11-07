@@ -85,13 +85,22 @@ if __name__ == "__main__":
         time.sleep(600)  # 每10分鐘檢查一次
 
 # === 啟動 Flask ===
+from flask import Flask
+import threading, os
+
 app = Flask(__name__)
 
 @app.route('/')
 def home():
     return "✅ AION2 monitor 正在運行中！"
 
+def start_flask():
+    port = int(os.environ.get("PORT", 10000))
+    print(f"🚀 Flask 伺服器啟動在 port {port}")
+    app.run(host="0.0.0.0", port=port)
+
 if __name__ == "__main__":
     threading.Thread(target=background_job, daemon=True).start()
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    start_flask()
+
+
