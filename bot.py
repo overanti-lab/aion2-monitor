@@ -17,21 +17,42 @@ TARGET_SITES = [
 BASE_URL = "https://tw.ncsoft.com"
 
 def get_latest_article(url):
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://tw.ncsoft.com/aion2/'
+    }
     try:
-        res = requests.get(url, headers=headers, timeout=10)
+        res = requests.get(url, headers=headers, timeout=15)
+        res.raise_for_status()
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # 這是關鍵：如果抓不到東西，我們會印出提示
-        first_post = soup.select_one('a[href*="articleId"]')
+        # 嘗試三種可能的選擇器：
+        # 1. 原始 articleId 方案
+        # 2. 找尋帶有 board_list 類別下的第一個 a
+        # 3. 直接找尋頁面中前幾個 a 標籤並過濾連結
+        potential_targets = soup.select('a[href*="articleId"]') or \
+                            soup.select('.board-list a') or \
+                            soup.select('.list_item a')
         
-        if first_post:
-            title = first_post.get_text(strip=True)
-            link = BASE_URL + first_post['href']
-            article_id = link.split('articleId=')[-1]
+        if potential_targets:
+            # 取得第一個有效的目標
+            target = potential_targets[0]
+            title = target.get_text(strip=True)
+            link = target['href']
+            
+            # 處理相對路徑
+            if link.startswith('/'):
+                link = BASE_URL + link
+            
+            # 提取唯一 ID (用於判斷更新)
+            # 如果 href 裡有 articleId 就拿它，沒有就拿整個連結當 ID
+            article_id = link.split('articleId=')[-1] if 'articleId=' in link else link
+            
             return {"id": article_id, "title": title, "link": link}
         else:
-            print(f"⚠️ 在 {url} 中找不到公告連結，請檢查網頁選擇器。")
+            # 除錯用：如果還是抓不到，印出前 500 個字看看內容
+            print(f"DEBUG: {url} 抓到的內容前段：{res.text[:500]}")
+            
     except Exception as e:
         print(f"❌ 抓取異常 ({url}): {e}")
     return None
