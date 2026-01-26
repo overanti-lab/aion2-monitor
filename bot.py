@@ -1,105 +1,83 @@
-import requests
-import json
 import os
+import json
+import time
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage
 )
 
-# 金鑰與設定
+# 設定
 LINE_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
 USER_ID = os.getenv('LINE_USER_ID')
 DB_FILE = 'last_ids.json'
 
-# 修正：補全所有官網請求時會帶上的參數
 TARGET_SITES = [
-    {
-        "name": "AION2 官方公告", 
-        "api_url": "https://tw.ncsoft.com/aion2/api/board/list?boardId=notice&page=1&pageSize=10&worldId=0",
-        "web_url": "https://tw.ncsoft.com/aion2/board/notice/view?articleId="
-    },
-    {
-        "name": "AION2 更新資訊", 
-        "api_url": "https://tw.ncsoft.com/aion2/api/board/list?boardId=update&page=1&pageSize=10&worldId=0",
-        "web_url": "https://tw.ncsoft.com/aion2/board/update/view?articleId="
-    }
+    {"name": "AION2 官方公告", "url": "https://tw.ncsoft.com/aion2/board/notice/list"},
+    {"name": "AION2 更新資訊", "url": "https://tw.ncsoft.com/aion2/board/update/list"}
 ]
 
-def get_latest_from_api(site):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'https://tw.ncsoft.com/aion2/board/notice/list',
-        'Accept': 'application/json, text/plain, */*',
-        'X-Requested-With': 'XMLHttpRequest'
-    }
+def get_latest_with_selenium(url):
+    chrome_options = Options()
+    chrome_options.add_argument('--headless') # 不顯示視窗
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     
     try:
-        # 使用 Session 並模擬完整路徑
-        session = requests.Session()
-        res = session.get(site['api_url'], headers=headers, timeout=15)
+        driver.get(url)
+        time.sleep(7) # 強制等待網頁載入內容
         
-        if res.status_code == 200:
-            data = res.json()
-            # 針對 NCSoft 回傳格式：資料通常在 result -> contents 或直接在 contents
-            result_obj = data.get('result', {})
-            articles = result_obj.get('contents', []) if isinstance(result_obj, dict) else data.get('contents', [])
-            
-            if articles:
-                first = articles[0]
-                article_id = str(first.get('articleId'))
-                title = first.get('title')
-                link = site['web_url'] + article_id
-                return {"id": article_id, "title": title, "link": link}
-            else:
-                print(f"📭 {site['name']} API 回傳列表為空")
-        else:
-            print(f"⚠️ {site['name']} 狀態碼: {res.status_code}")
-            print(f"DEBUG 詳細錯誤: {res.text[:300]}")
+        # 尋找頁面中第一個 articleId 的連結
+        elements = driver.find_elements(By.CSS_SELECTOR, 'a[href*="articleId"]')
+        if elements:
+            first = elements[0]
+            title = first.text.strip()
+            link = first.get_attribute('href')
+            article_id = link.split('articleId=')[-1]
+            return {"id": article_id, "title": title, "link": link}
     except Exception as e:
-        print(f"❌ 請求出錯: {e}")
+        print(f"❌ Selenium 抓取異常: {e}")
+    finally:
+        driver.quit()
     return None
 
 def main():
-    print("🚀 機器人啟動 (參數校正模式)...")
-    
-    if not LINE_ACCESS_TOKEN or not USER_ID:
-        print("❌ 錯誤: 金鑰缺失")
-        return
+    print("🚀 啟動 Selenium 真人模擬模式...")
+    if not LINE_ACCESS_TOKEN or not USER_ID: return
 
     history = {}
     if os.path.exists(DB_FILE):
-        try:
-            with open(DB_FILE, 'r') as f:
-                history = json.load(f)
-        except: pass
+        with open(DB_FILE, 'r') as f: history = json.load(f)
 
     for site in TARGET_SITES:
-        print(f"🔍 檢查: {site['name']}...")
-        current = get_latest_from_api(site)
+        print(f"🔍 模擬開啟瀏覽器檢查: {site['name']}...")
+        current = get_latest_with_selenium(site['url'])
         
-        if current:
-            print(f"✅ 成功獲取: {current['title']}")
+        if current and current['title']:
+            print(f"✅ 看到最新公告: {current['title']}")
             if history.get(site['name']) != current['id']:
-                print(f"🆕 偵測到更新，發送 LINE...")
-                msg = f"🔔 {site['name']} 有新消息！\n\n【{current['title']}】\n\n傳送門：{current['link']}"
+                print(f"🆕 發現新公告！")
+                msg = f"🔔 {site['name']} 更新！\n\n【{current['title']}】\n\n連結：{current['link']}"
                 
-                try:
-                    config = Configuration(access_token=LINE_ACCESS_TOKEN)
-                    with ApiClient(config) as api_client:
-                        api = MessagingApi(api_client)
-                        api.push_message(PushMessageRequest(
-                            to=USER_ID,
-                            messages=[TextMessage(text=msg)]
-                        ))
-                    print("✨ LINE 推播完成")
-                    history[site['name']] = current['id']
-                except Exception as e:
-                    print(f"❌ LINE 推播失敗: {e}")
+                # 發送 LINE
+                config = Configuration(access_token=LINE_ACCESS_TOKEN)
+                with ApiClient(config) as api_client:
+                    MessagingApi(api_client).push_message(PushMessageRequest(
+                        to=USER_ID, messages=[TextMessage(text=msg)]
+                    ))
+                history[site['name']] = current['id']
             else:
-                print("😴 無新內容。")
+                print("😴 沒有新內容。")
+        else:
+            print("📭 瀏覽器內找不到公告，請檢查 CSS 選擇器。")
 
-    with open(DB_FILE, 'w') as f:
-        json.dump(history, f)
-    print("💾 任務結束。")
+    with open(DB_FILE, 'w') as f: json.dump(history, f)
 
 if __name__ == "__main__":
     main()
