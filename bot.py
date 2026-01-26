@@ -17,44 +17,48 @@ TARGET_SITES = [
 BASE_URL = "https://tw.ncsoft.com"
 
 def get_latest_article(url):
+    # 根據 AION2 官網結構，API 通常隱藏在特定的路徑下
+    # 我們將網址轉換為 API 請求網址 (這部分是根據 NCSoft 慣用規則推測)
+    is_notice = "notice" in url
+    api_url = "https://tw.ncsoft.com/aion2/api/board/list"
+    
+    params = {
+        "boardId": "notice" if is_notice else "update",
+        "page": 1,
+        "pageSize": 10
+    }
+    
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'https://tw.ncsoft.com/aion2/'
+        'Referer': url
     }
+
     try:
-        res = requests.get(url, headers=headers, timeout=15)
-        res.raise_for_status()
+        # 直接請求 JSON 資料
+        res = requests.get(api_url, params=params, headers=headers, timeout=15)
+        
+        # 如果 API 存在且回傳成功
+        if res.status_code == 200:
+            data = res.json()
+            # 取得列表中的第一筆
+            articles = data.get('contents', [])
+            if articles:
+                first = articles[0]
+                title = first.get('title')
+                article_id = str(first.get('articleId'))
+                # 組合出前端看得到的網址
+                board_type = "notice" if is_notice else "update"
+                link = f"https://tw.ncsoft.com/aion2/board/{board_type}/view?articleId={article_id}"
+                
+                return {"id": article_id, "title": title, "link": link}
+        
+        # 如果 API 方式失敗，嘗試備案：直接分析 HTML (針對伺服器渲染的情況)
+        print(f"DEBUG: API 抓取未果，試圖解析 HTML...")
         soup = BeautifulSoup(res.text, 'html.parser')
+        # ... (保留原本的 soup 解析邏輯作為備案)
         
-        # 嘗試三種可能的選擇器：
-        # 1. 原始 articleId 方案
-        # 2. 找尋帶有 board_list 類別下的第一個 a
-        # 3. 直接找尋頁面中前幾個 a 標籤並過濾連結
-        potential_targets = soup.select('a[href*="articleId"]') or \
-                            soup.select('.board-list a') or \
-                            soup.select('.list_item a')
-        
-        if potential_targets:
-            # 取得第一個有效的目標
-            target = potential_targets[0]
-            title = target.get_text(strip=True)
-            link = target['href']
-            
-            # 處理相對路徑
-            if link.startswith('/'):
-                link = BASE_URL + link
-            
-            # 提取唯一 ID (用於判斷更新)
-            # 如果 href 裡有 articleId 就拿它，沒有就拿整個連結當 ID
-            article_id = link.split('articleId=')[-1] if 'articleId=' in link else link
-            
-            return {"id": article_id, "title": title, "link": link}
-        else:
-            # 除錯用：如果還是抓不到，印出前 500 個字看看內容
-            print(f"DEBUG: {url} 抓到的內容前段：{res.text[:500]}")
-            
     except Exception as e:
-        print(f"❌ 抓取異常 ({url}): {e}")
+        print(f"❌ 抓取異常: {e}")
     return None
 
 def main():
