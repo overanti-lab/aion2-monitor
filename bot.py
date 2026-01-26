@@ -10,7 +10,6 @@ LINE_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
 USER_ID = os.getenv('LINE_USER_ID')
 DB_FILE = 'last_ids.json'
 
-# AION2 修正後的 API 網址 (與官網同網域)
 TARGET_SITES = [
     {
         "name": "AION2 官方公告", 
@@ -25,16 +24,29 @@ TARGET_SITES = [
 ]
 
 def get_latest_from_api(site):
+    # 這裡加入了更完整的模擬資訊，防止伺服器回傳 500
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Referer': 'https://tw.ncsoft.com/aion2/board/notice/list',
-        'Accept': 'application/json, text/plain, */*'
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-TW,zh;q=0.9',
+        'X-Requested-With': 'XMLHttpRequest' # 告訴伺服器這是一個 API 請求
     }
+    
+    # 嘗試建立一個 session 來處理可能需要的 Cookie
+    session = requests.Session()
+    
     try:
-        res = requests.get(site['api_url'], headers=headers, timeout=15)
+        # 先訪問一次首頁取得基本 Cookie
+        session.get("https://tw.ncsoft.com/aion2/board/notice/list", headers=headers, timeout=10)
+        
+        # 執行真正的 API 請求
+        res = session.get(site['api_url'], headers=headers, timeout=15)
+        
         if res.status_code == 200:
             data = res.json()
-            # 根據 NCSoft JSON 結構提取資料
+            # 這裡要精確對應 NCSoft 的 JSON 結構
+            # 通常資料會放在 data 或是 contents 欄位中
             articles = data.get('contents', [])
             if articles:
                 first = articles[0]
@@ -43,16 +55,19 @@ def get_latest_from_api(site):
                 link = site['web_url'] + article_id
                 return {"id": article_id, "title": title, "link": link}
         else:
-            print(f"⚠️ API 回傳異常狀態碼: {res.status_code}")
+            print(f"⚠️ {site['name']} API 失敗，狀態碼: {res.status_code}")
+            # 如果還是 500，印出回傳內容除錯
+            if res.status_code == 500:
+                print(f"DEBUG 回傳內容: {res.text[:200]}")
     except Exception as e:
-        print(f"❌ API 請求出錯 ({site['name']}): {e}")
+        print(f"❌ 請求過程出錯: {e}")
     return None
 
 def main():
-    print("🚀 機器人啟動 (修正版 API 模式)...")
+    print("🚀 機器人啟動 (終極模擬模式)...")
     
     if not LINE_ACCESS_TOKEN or not USER_ID:
-        print("❌ 錯誤: 找不到 LINE 金鑰，請確認 GitHub Secrets 設定。")
+        print("❌ 錯誤: 找不到 LINE 金鑰，請檢查 GitHub Secrets 設定。")
         return
 
     history = {}
@@ -60,7 +75,6 @@ def main():
         try:
             with open(DB_FILE, 'r') as f:
                 history = json.load(f)
-            print(f"查閱舊紀錄: {history}")
         except:
             history = {}
 
@@ -71,8 +85,8 @@ def main():
         if current:
             print(f"✅ 成功獲取: {current['title']}")
             if history.get(site['name']) != current['id']:
-                print(f"🆕 偵測到新文章，準備推送 LINE...")
-                msg = f"🔔 {site['name']} 有新內容！\n\n【{current['title']}】\n\n連結：{current['link']}"
+                print(f"🆕 偵測到新內容，準備發送 LINE...")
+                msg = f"🔔 {site['name']} 有新消息！\n\n【{current['title']}】\n\n傳送門：{current['link']}"
                 
                 try:
                     config = Configuration(access_token=LINE_ACCESS_TOKEN)
@@ -85,15 +99,15 @@ def main():
                     print("✨ LINE 推播成功！")
                     history[site['name']] = current['id']
                 except Exception as e:
-                    print(f"❌ LINE 推播失敗: {e}")
+                    print(f"❌ 推播失敗: {e}")
             else:
-                print("😴 資料相同，無需更新。")
+                print("😴 資料無變化。")
         else:
-            print(f"📭 無法獲取 {site['name']} 的 API 資料。")
+            print(f"📭 無法獲取有效資料。")
 
     with open(DB_FILE, 'w') as f:
         json.dump(history, f)
-    print("💾 執行結束。")
+    print("💾 任務結束。")
 
 if __name__ == "__main__":
     main()
