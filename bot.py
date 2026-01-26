@@ -7,9 +7,8 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from linebot.v3.messaging import (
-    Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage
+    Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, BroadcastRequest
 )
-
 # 設定
 LINE_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
 USER_ID = os.getenv('LINE_USER_ID')
@@ -59,19 +58,26 @@ def main():
         print(f"🔍 模擬開啟瀏覽器檢查: {site['name']}...")
         current = get_latest_with_selenium(site['url'])
         
-        if current and current['title']:
-            print(f"✅ 看到最新公告: {current['title']}")
+        print(f"✅ 看到最新公告: {current['title']}")
             if history.get(site['name']) != current['id']:
-                print(f"🆕 發現新公告！")
+                print(f"🆕 發現新公告！準備進行廣播...")
                 msg = f"🔔 {site['name']} 更新！\n\n【{current['title']}】\n\n連結：{current['link']}"
                 
-                # 發送 LINE
-                config = Configuration(access_token=LINE_ACCESS_TOKEN)
-                with ApiClient(config) as api_client:
-                    MessagingApi(api_client).push_message(PushMessageRequest(
-                        to=USER_ID, messages=[TextMessage(text=msg)]
-                    ))
-                history[site['name']] = current['id']
+                try:
+                    config = Configuration(access_token=LINE_ACCESS_TOKEN)
+                    with ApiClient(config) as api_client:
+                        api = MessagingApi(api_client)
+                        
+                        # 使用 broadcast 發送給所有好友
+                        api.broadcast(BroadcastRequest(
+                            messages=[TextMessage(text=msg)]
+                        ))
+                    print("✨ 全員廣播完成！")
+                    # 成功發送後才更新紀錄
+                    history[site['name']] = current['id']
+                except Exception as e:
+                    print(f"❌ 廣播失敗: {e}")
+                    # 如果發送失敗，建議「不要」更新 history，這樣下次執行才會重試發送
             else:
                 print("😴 沒有新內容。")
         else:
