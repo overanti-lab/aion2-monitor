@@ -9,6 +9,7 @@ from selenium.webdriver.common.by import By
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage, BroadcastRequest
 )
+
 # 設定
 LINE_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
 USER_ID = os.getenv('LINE_USER_ID')
@@ -48,17 +49,26 @@ def get_latest_with_selenium(url):
 
 def main():
     print("🚀 啟動 Selenium 真人模擬模式...")
-    if not LINE_ACCESS_TOKEN or not USER_ID: return
+    if not LINE_ACCESS_TOKEN or not USER_ID:
+        print("❌ 錯誤：找不到 LINE 金鑰或 ID")
+        return
 
     history = {}
     if os.path.exists(DB_FILE):
-        with open(DB_FILE, 'r') as f: history = json.load(f)
+        try:
+            with open(DB_FILE, 'r') as f:
+                history = json.load(f)
+        except:
+            history = {}
 
     for site in TARGET_SITES:
         print(f"🔍 模擬開啟瀏覽器檢查: {site['name']}...")
         current = get_latest_with_selenium(site['url'])
         
-        print(f"✅ 看到最新公告: {current['title']}")
+        if current and current.get('title'):
+            print(f"✅ 看到最新公告: {current['title']}")
+            
+            # --- 此處縮排已修正 ---
             if history.get(site['name']) != current['id']:
                 print(f"🆕 發現新公告！準備進行廣播...")
                 msg = f"🔔 {site['name']} 更新！\n\n【{current['title']}】\n\n連結：{current['link']}"
@@ -77,13 +87,15 @@ def main():
                     history[site['name']] = current['id']
                 except Exception as e:
                     print(f"❌ 廣播失敗: {e}")
-                    # 如果發送失敗，建議「不要」更新 history，這樣下次執行才會重試發送
             else:
                 print("😴 沒有新內容。")
         else:
-            print("📭 瀏覽器內找不到公告，請檢查 CSS 選擇器。")
+            print(f"📭 在 {site['name']} 找不到公告資料。")
 
-    with open(DB_FILE, 'w') as f: json.dump(history, f)
+    # 存檔
+    with open(DB_FILE, 'w') as f:
+        json.dump(history, f)
+    print("💾 任務結束。")
 
 if __name__ == "__main__":
     main()
