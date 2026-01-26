@@ -1,0 +1,40 @@
+name: AION2 Update Checker
+
+on:
+  schedule:
+    # 每 30 分鐘執行一次 (UTC 時間，這代表台灣時間的每小時 15分與 45分)
+    - cron: '*/30 * * * *'
+  workflow_dispatch: # 讓你可以手動點擊按鈕測試執行
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 允許 GitHub 把紀錄寫回你的 Repo
+
+    steps:
+    - name: 檢出程式碼
+      uses: actions/checkout@v4
+
+    - name: 設定 Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: 安裝套件
+      run: |
+        pip install requests beautifulsoup4 line-bot-sdk
+
+    - name: 執行爬蟲腳本
+      env:
+        LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+        LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+      run: python bot.py
+
+    - name: 儲存更新紀錄
+      run: |
+        git config --global user.name "GitHub Action"
+        git config --global user.email "action@github.com"
+        git add last_ids.json
+        git commit -m "Update last seen article IDs" || exit 0
+        git push
