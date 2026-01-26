@@ -2,15 +2,14 @@ name: AION2 Update Checker
 
 on:
   schedule:
-    # 每 30 分鐘執行一次 (UTC 時間，這代表台灣時間的每小時 15分與 45分)
     - cron: '*/30 * * * *'
-  workflow_dispatch: # 讓你可以手動點擊按鈕測試執行
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 允許 GitHub 把紀錄寫回你的 Repo
+      contents: write
 
     steps:
     - name: 檢出程式碼
@@ -21,9 +20,14 @@ jobs:
       with:
         python-version: '3.10'
 
+    - name: 安裝瀏覽器環境
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+
     - name: 安裝套件
       run: |
-        pip install requests beautifulsoup4 line-bot-sdk
+        pip install requests line-bot-sdk selenium webdriver-manager
 
     - name: 執行爬蟲腳本
       env:
