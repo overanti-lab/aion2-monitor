@@ -22,25 +22,33 @@ TARGET_SITES = [
 
 def get_latest_with_selenium(url):
     chrome_options = Options()
-    chrome_options.add_argument('--headless') # 不顯示視窗
+    chrome_options.add_argument('--headless')
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
+    # 加入這行偽裝，減少被阻擋機率
+    chrome_options.add_argument('--disable-blink-features=AutomationControlled')
     chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     
     try:
         driver.get(url)
-        time.sleep(7) # 強制等待網頁載入內容
+        # 增加等待時間到 12 秒，應對官網卡頓
+        time.sleep(12) 
         
-        # 尋找頁面中第一個 articleId 的連結
+        # 嘗試滾動一下網頁，有時能觸發動態內容載入
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(2)
+        
         elements = driver.find_elements(By.CSS_SELECTOR, 'a[href*="articleId"]')
         if elements:
-            first = elements[0]
-            title = first.text.strip()
-            link = first.get_attribute('href')
-            article_id = link.split('articleId=')[-1]
-            return {"id": article_id, "title": title, "link": link}
+            # 取得第一個有效的公告 (排除掉一些置頂但不是最新的標籤)
+            for el in elements:
+                title = el.text.strip()
+                link = el.get_attribute('href')
+                if title and 'articleId=' in link:
+                    article_id = link.split('articleId=')[-1]
+                    return {"id": article_id, "title": title, "link": link}
     except Exception as e:
         print(f"❌ Selenium 抓取異常: {e}")
     finally:
