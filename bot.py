@@ -37,7 +37,7 @@ def get_latest_with_selenium(url):
         time.sleep(12) 
         
         # 嘗試滾動一下網頁，有時能觸發動態內容載入
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        driver.execute_script("window.scrollTo(0,500);")
         time.sleep(2)
         
         elements = driver.find_elements(By.CSS_SELECTOR, 'a[href*="articleId"]')
